@@ -16,7 +16,7 @@ pub(crate) enum Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    pub(crate) fn next_record(c: &mut Cursor<'a>) -> Result<Self> {
+    pub(crate) fn next_record(c: &mut Cursor) -> Result<Self> {
         let header = c.next_chunk()?;
 
         let mut op = None;

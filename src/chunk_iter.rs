@@ -12,17 +12,17 @@ pub enum ChunkRecord<'a> {
 
 /// Iterator over records stored in the chunk section of a rosbag file.
 pub struct ChunkRecordsIterator<'a> {
-    pub(crate) cursor: Cursor<'a>,
+    pub(crate) cursor: Cursor,
     pub(crate) offset: u64,
 }
 
 impl<'a> ChunkRecordsIterator<'a> {
     /// Jump to the given position in the file.
     ///
-    /// Be carefull to jump only to record beginnings (e.g. to position listed
+    /// Be careful to jump only to record beginnings (e.g. to position listed
     /// in `ChunkInfo` records), as incorrect offset position
     /// will result in error on the next iteration and in the worst case
-    /// scenario to a long blocking (programm will try to read a huge chunk of
+    /// scenario to a long blocking (program will try to read a huge chunk of
     /// data).
     pub fn seek(&mut self, pos: u64) -> Result<()> {
         if pos < self.offset {

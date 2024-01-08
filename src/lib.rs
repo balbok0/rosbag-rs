@@ -52,11 +52,14 @@
 //! ```
 #![warn(missing_docs, rust_2018_idioms)]
 
-use memmap2::Mmap;
-use std::{fs, io, path::Path, result, str};
+use std::{io, str};
+use anyhow::Result;
+
+use object_store::{ObjectStore, path::Path, parse_url};
+use url::Url;
 
 const VERSION_STRING: &str = "#ROSBAG V2.0\n";
-const VERSION_LEN: u64 = VERSION_STRING.len() as u64;
+const VERSION_LEN: usize = VERSION_STRING.len() as usize;
 const ROSBAG_HEADER_OP: u8 = 0x03;
 
 mod cursor;
@@ -74,21 +77,18 @@ use field_iter::FieldIterator;
 use record_types::utils::{check_op, set_field_u32, set_field_u64};
 
 pub use chunk_iter::{ChunkRecord, ChunkRecordsIterator};
-pub use error::Error;
+pub use error::RosError as BagError;
 pub use index_iter::{IndexRecord, IndexRecordsIterator};
 pub use msg_iter::{MessageRecord, MessageRecordsIterator};
 
 /// Open rosbag file.
 pub struct RosBag {
-    data: Mmap,
+    cursor: Cursor,
     start_pos: usize,
     index_pos: usize,
     conn_count: u32,
     chunk_count: u32,
 }
-
-/// A specialized Result type for ROS bag file reading and parsing.
-pub type Result<T> = result::Result<T, Error>;
 
 /// Bag file header record which contains basic information about the file.
 #[derive(Debug, Clone)]
@@ -101,14 +101,14 @@ struct BagHeader {
     chunk_count: u32,
 }
 
-fn parse_bag_header(data: &[u8]) -> Result<(u64, BagHeader)> {
-    let mut cursor = Cursor::new(data);
+async fn parse_bag_header(cursor: Cursor) -> Result<(u64, BagHeader)> {
+    let bytes = cursor.get_range(&path, 0..VERSION_LEN).await?;
 
-    if cursor.next_bytes(VERSION_LEN)? != VERSION_STRING.as_bytes() {
-        return Err(Error::InvalidHeader);
+    if bytes != VERSION_STRING.as_bytes() {
+        return Err(BagError::InvalidHeader);
     }
 
-    let header = cursor.next_chunk()?;
+    let header = cursor.read_chunk(VERSION_LEN)?;
 
     let mut index_pos: Option<u64> = None;
     let mut conn_count: Option<u32> = None;
@@ -146,10 +146,11 @@ fn parse_bag_header(data: &[u8]) -> Result<(u64, BagHeader)> {
 
 impl RosBag {
     /// Create a new iterator over provided path to ROS bag file.
-    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let data = unsafe { Mmap::map(&fs::File::open(path)?)? };
+    pub fn new<P: Into<Url>>(path: P) -> io::Result<Self> {
+        let (store, path) = parse_url(&path.into())?;
+        let cursor = Cursor::new(store, store.head(&path)?);
 
-        let (start_pos, header) = parse_bag_header(&data).map_err(|_| {
+        let (start_pos, header) = parse_bag_header(cursor).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid or unsupported rosbag header",
@@ -157,7 +158,7 @@ impl RosBag {
         })?;
 
         Ok(Self {
-            data,
+            cursor,
             start_pos: start_pos.try_into().unwrap(),
             conn_count: header.conn_count,
             index_pos: header.index_pos.try_into().unwrap(),

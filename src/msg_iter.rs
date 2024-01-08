@@ -16,7 +16,7 @@ pub enum MessageRecord<'a> {
 
 /// Iterator over records stored in a [`Chunk`][crate::record_types::Chunk] record.
 pub struct MessageRecordsIterator<'a> {
-    pub(crate) cursor: Cursor<'a>,
+    pub(crate) cursor: Cursor,
 }
 
 impl<'a> MessageRecordsIterator<'a> {

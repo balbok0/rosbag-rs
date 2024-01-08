@@ -42,7 +42,7 @@ pub(crate) struct ConnectionHeader<'a> {
 impl<'a> RecordGen<'a> for Connection<'a> {
     type Header = ConnectionHeader<'a>;
 
-    fn read_data(c: &mut Cursor<'a>, header: Self::Header) -> Result<Self> {
+    fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
         let id = header.id.ok_or(Error::InvalidHeader)?;
         let storage_topic = header.storage_topic.ok_or(Error::InvalidHeader)?;
 

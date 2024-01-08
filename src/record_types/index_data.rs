@@ -34,7 +34,7 @@ pub(crate) struct IndexDataHeader {
 impl<'a> RecordGen<'a> for IndexData<'a> {
     type Header = IndexDataHeader;
 
-    fn read_data(c: &mut Cursor<'a>, header: Self::Header) -> Result<Self> {
+    fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
         let ver = header.ver.ok_or(Error::InvalidHeader)?;
         let conn_id = header.conn_id.ok_or(Error::InvalidHeader)?;
         let count = header.count.ok_or(Error::InvalidHeader)?;
@@ -76,7 +76,7 @@ pub struct IndexDataEntry {
 
 /// Iterator over `IndexData` entries
 pub struct IndexDataEntriesIterator<'a> {
-    cursor: Cursor<'a>,
+    cursor: Cursor,
 }
 
 impl<'a> Iterator for IndexDataEntriesIterator<'a> {

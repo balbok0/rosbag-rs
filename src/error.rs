@@ -4,7 +4,7 @@ use std::fmt;
 
 /// The error type for ROS bag file reading and parsing.
 #[derive(Debug)]
-pub enum Error {
+pub enum RosError {
     /// Invalid headed.
     InvalidHeader,
     /// Invalid record.
@@ -25,15 +25,15 @@ pub enum Error {
     Lz4DecompressionError(String),
 }
 
-impl From<OutOfBounds> for Error {
-    fn from(_: OutOfBounds) -> Error {
-        Error::OutOfBounds
+impl From<OutOfBounds> for RosError {
+    fn from(_: OutOfBounds) -> RosError {
+        RosError::OutOfBounds
     }
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for RosError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Error::*;
+        use RosError::*;
         let s = match self {
             InvalidHeader => "invalid header".to_string(),
             InvalidRecord => "invalid record".to_string(),
@@ -49,4 +49,5 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for RosError {}
+

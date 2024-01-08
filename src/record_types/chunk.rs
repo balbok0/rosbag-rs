@@ -56,7 +56,7 @@ pub struct Chunk<'a> {
 
 impl<'a> Chunk<'a> {
     /// Get iterator over only messages
-    pub fn messages(&self) -> MessageRecordsIterator<'_> {
+    pub fn messages(&self) -> MessageRecordsIterator {
         MessageRecordsIterator::new(&self.data)
     }
 }
@@ -70,7 +70,7 @@ pub(crate) struct ChunkHeader {
 impl<'a> RecordGen<'a> for Chunk<'a> {
     type Header = ChunkHeader;
 
-    fn read_data(c: &mut Cursor<'a>, header: Self::Header) -> Result<Self> {
+    fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
         let compression = header.compression.ok_or(Error::InvalidHeader)?;
         let size = header.size.ok_or(Error::InvalidHeader)?;
         let data = compression.decompress(c.next_chunk()?, header.size)?;

@@ -20,7 +20,7 @@ pub struct ChunkInfo<'a> {
 
 impl<'a> ChunkInfo<'a> {
     /// Get entries iterator.
-    pub fn entries(&'a self) -> ChunkInfoEntriesIterator<'a> {
+    pub fn entries(&'a self) -> ChunkInfoEntriesIterator {
         ChunkInfoEntriesIterator {
             cursor: Cursor::new(self.data),
         }
@@ -39,7 +39,7 @@ pub(crate) struct ChunkInfoHeader {
 impl<'a> RecordGen<'a> for ChunkInfo<'a> {
     type Header = ChunkInfoHeader;
 
-    fn read_data(c: &mut Cursor<'a>, header: Self::Header) -> Result<Self> {
+    fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
         let ver = header.ver.ok_or(Error::InvalidHeader)?;
         let chunk_pos = header.chunk_pos.ok_or(Error::InvalidHeader)?;
         let start_time = header.start_time.ok_or(Error::InvalidHeader)?;
@@ -91,11 +91,11 @@ pub struct ChunkInfoEntry {
 }
 
 /// Iterator over `ChunkInfo` entries
-pub struct ChunkInfoEntriesIterator<'a> {
-    cursor: Cursor<'a>,
+pub struct ChunkInfoEntriesIterator {
+    cursor: Cursor,
 }
 
-impl<'a> Iterator for ChunkInfoEntriesIterator<'a> {
+impl<'a> Iterator for ChunkInfoEntriesIterator {
     type Item = ChunkInfoEntry;
 
     fn next(&mut self) -> Option<ChunkInfoEntry> {

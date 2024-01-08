@@ -43,10 +43,10 @@ pub(crate) trait RecordGen<'a>: Sized {
     /// Type which holds header information
     type Header: HeaderGen<'a>;
 
-    fn read(header: &'a [u8], c: &mut Cursor<'a>) -> Result<Self> {
+    fn read(header: &'a [u8], c: &mut Cursor) -> Result<Self> {
         let header = Self::Header::read_header(header)?;
         Self::read_data(c, header)
     }
 
-    fn read_data(c: &mut Cursor<'a>, h: Self::Header) -> Result<Self>;
+    fn read_data(c: &mut Cursor, h: Self::Header) -> Result<Self>;
 }

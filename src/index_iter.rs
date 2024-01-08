@@ -14,7 +14,7 @@ pub enum IndexRecord<'a> {
 
 /// Iterator over records stored in the chunk section of a rosbag file.
 pub struct IndexRecordsIterator<'a> {
-    pub(crate) cursor: Cursor<'a>,
+    pub(crate) cursor: Cursor,
     pub(crate) offset: u64,
 }
 

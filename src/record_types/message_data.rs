@@ -22,7 +22,7 @@ pub(crate) struct MessageDataHeader {
 impl<'a> RecordGen<'a> for MessageData<'a> {
     type Header = MessageDataHeader;
 
-    fn read_data(c: &mut Cursor<'a>, header: Self::Header) -> Result<Self> {
+    fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
         let conn_id = header.conn_id.ok_or(Error::InvalidHeader)?;
         let time = header.time.ok_or(Error::InvalidHeader)?;
         let data = c.next_chunk()?;
