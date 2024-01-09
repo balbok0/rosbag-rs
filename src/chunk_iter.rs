@@ -1,22 +1,22 @@
 use crate::record_types::{Chunk, IndexData};
-use crate::{record::Record, Cursor, Error, Result};
+use crate::{record::Record, Cursor, BagError, Result};
 
 /// Record types which can be stored in the chunk section.
 #[derive(Debug, Clone)]
-pub enum ChunkRecord<'a> {
+pub enum ChunkRecord {
     /// [`Chunk`] record.
-    Chunk(Chunk<'a>),
+    Chunk(Chunk),
     /// [`IndexData`] record.
-    IndexData(IndexData<'a>),
+    IndexData(IndexData),
 }
 
 /// Iterator over records stored in the chunk section of a rosbag file.
-pub struct ChunkRecordsIterator<'a> {
+pub struct ChunkRecordsIterator {
     pub(crate) cursor: Cursor,
     pub(crate) offset: u64,
 }
 
-impl<'a> ChunkRecordsIterator<'a> {
+impl ChunkRecordsIterator {
     /// Jump to the given position in the file.
     ///
     /// Be careful to jump only to record beginnings (e.g. to position listed
@@ -26,14 +26,14 @@ impl<'a> ChunkRecordsIterator<'a> {
     /// data).
     pub fn seek(&mut self, pos: u64) -> Result<()> {
         if pos < self.offset {
-            return Err(Error::OutOfBounds);
+            return Err(BagError::OutOfBounds.into());
         }
         Ok(self.cursor.seek(pos - self.offset)?)
     }
 }
 
-impl<'a> Iterator for ChunkRecordsIterator<'a> {
-    type Item = Result<ChunkRecord<'a>>;
+impl Iterator for ChunkRecordsIterator {
+    type Item = Result<ChunkRecord>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor.left() == 0 {
@@ -42,7 +42,7 @@ impl<'a> Iterator for ChunkRecordsIterator<'a> {
         let res = match Record::next_record(&mut self.cursor) {
             Ok(Record::Chunk(v)) => Ok(ChunkRecord::Chunk(v)),
             Ok(Record::IndexData(v)) => Ok(ChunkRecord::IndexData(v)),
-            Ok(v) => Err(Error::UnexpectedChunkSectionRecord(v.get_type())),
+            Ok(v) => Err(BagError::UnexpectedChunkSectionRecord(v.get_type()).into()),
             Err(e) => Err(e),
         };
         Some(res)

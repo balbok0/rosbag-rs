@@ -1,25 +1,29 @@
+use bytes::Bytes;
+
 use super::utils::{set_field_u32, unknown_field};
-use super::{Error, HeaderGen, RecordGen, Result};
+use super::{HeaderGen, RecordGen};
+use anyhow::Result;
+use crate::error::RosError;
 
 use crate::cursor::Cursor;
 
 /// Index record which describes messages offset for `Connection` with
 /// `conn_id` ID in the preceding `Chunk`.
 #[derive(Debug, Clone)]
-pub struct IndexData<'a> {
+pub struct IndexData {
     /// Index data record version (only version 1 is currently cupported)
     pub ver: u32,
     /// Connection ID
     pub conn_id: u32,
     /// Occurrences of timestamps, chunk record offsets and message offsets
-    data: &'a [u8],
+    data: Bytes,
 }
 
-impl<'a> IndexData<'a> {
+impl IndexData {
     /// Get entries iterator.
-    pub fn entries(&'a self) -> IndexDataEntriesIterator<'a> {
+    pub fn entries(&self) -> IndexDataEntriesIterator {
         IndexDataEntriesIterator {
-            cursor: Cursor::new(self.data),
+            cursor: Cursor::new(self.data.clone()),
         }
     }
 }
@@ -31,27 +35,27 @@ pub(crate) struct IndexDataHeader {
     pub count: Option<u32>,
 }
 
-impl<'a> RecordGen<'a> for IndexData<'a> {
+impl RecordGen for IndexData {
     type Header = IndexDataHeader;
 
     fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
-        let ver = header.ver.ok_or(Error::InvalidHeader)?;
-        let conn_id = header.conn_id.ok_or(Error::InvalidHeader)?;
-        let count = header.count.ok_or(Error::InvalidHeader)?;
+        let ver = header.ver.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let conn_id = header.conn_id.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let count = header.count.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
 
         if ver != 1 {
-            return Err(Error::UnsupportedVersion);
+            return Err(RosError::UnsupportedVersion.into());
         }
         let n = c.next_u32()?;
         if n % 12 != 0 || n / 12 != count {
-            return Err(Error::InvalidRecord);
+            return Err(RosError::InvalidRecord.into());
         }
         let data = c.next_bytes(n as u64)?;
         Ok(Self { ver, conn_id, data })
     }
 }
 
-impl<'a> HeaderGen<'a> for IndexDataHeader {
+impl HeaderGen for IndexDataHeader {
     const OP: u8 = 0x04;
 
     fn process_field(&mut self, name: &str, val: &[u8]) -> Result<()> {
@@ -75,11 +79,11 @@ pub struct IndexDataEntry {
 }
 
 /// Iterator over `IndexData` entries
-pub struct IndexDataEntriesIterator<'a> {
+pub struct IndexDataEntriesIterator {
     cursor: Cursor,
 }
 
-impl<'a> Iterator for IndexDataEntriesIterator<'a> {
+impl Iterator for IndexDataEntriesIterator {
     type Item = IndexDataEntry;
 
     fn next(&mut self) -> Option<IndexDataEntry> {

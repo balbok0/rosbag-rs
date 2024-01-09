@@ -1,40 +1,41 @@
 use crate::record_types::{ChunkInfo, Connection, IndexData};
-use crate::{record::Record, Cursor, Error, Result};
+use crate::{record::Record, Cursor, BagError};
+use anyhow::Result;
 
 /// Record types which can be stored in the chunk section.
 #[derive(Debug, Clone)]
-pub enum IndexRecord<'a> {
+pub enum IndexRecord {
     /// [`IndexData`] record.
-    IndexData(IndexData<'a>),
+    IndexData(IndexData),
     /// [`Connection`] record.
-    Connection(Connection<'a>),
+    Connection(Connection),
     /// [`ChunkInfo`] record.
-    ChunkInfo(ChunkInfo<'a>),
+    ChunkInfo(ChunkInfo),
 }
 
 /// Iterator over records stored in the chunk section of a rosbag file.
-pub struct IndexRecordsIterator<'a> {
+pub struct IndexRecordsIterator {
     pub(crate) cursor: Cursor,
     pub(crate) offset: u64,
 }
 
-impl<'a> IndexRecordsIterator<'a> {
+impl IndexRecordsIterator {
     /// Jump to the given position in the file.
     ///
-    /// Be carefull to jump only to record beginnings, as incorrect offset position
+    /// Be careful to jump only to record beginnings, as incorrect offset position
     /// will result in error on the next iteration and in the worst case
-    /// scenario to a long blocking (programm will try to read a huge chunk of
+    /// scenario to a long blocking (program will try to read a huge chunk of
     /// data).
     pub fn seek(&mut self, pos: u64) -> Result<()> {
         if pos < self.offset {
-            return Err(Error::OutOfBounds);
+            return Err(BagError::OutOfBounds.into());
         }
         Ok(self.cursor.seek(pos - self.offset)?)
     }
 }
 
-impl<'a> Iterator for IndexRecordsIterator<'a> {
-    type Item = Result<IndexRecord<'a>>;
+impl Iterator for IndexRecordsIterator {
+    type Item = Result<IndexRecord>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor.left() == 0 {
@@ -44,7 +45,7 @@ impl<'a> Iterator for IndexRecordsIterator<'a> {
             Ok(Record::IndexData(v)) => Ok(IndexRecord::IndexData(v)),
             Ok(Record::Connection(v)) => Ok(IndexRecord::Connection(v)),
             Ok(Record::ChunkInfo(v)) => Ok(IndexRecord::ChunkInfo(v)),
-            Ok(v) => Err(Error::UnexpectedIndexSectionRecord(v.get_type())),
+            Ok(v) => Err(BagError::UnexpectedIndexSectionRecord(v.get_type()).into()),
             Err(e) => Err(e),
         };
         Some(res)

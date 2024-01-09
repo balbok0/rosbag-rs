@@ -1,11 +1,15 @@
+use bytes::Bytes;
+
 use super::utils::{set_field_time, set_field_u32, set_field_u64, unknown_field};
-use super::{Error, HeaderGen, RecordGen, Result};
+use super::{HeaderGen, RecordGen};
+use crate::error::RosError;
+use anyhow::Result;
 
 use crate::cursor::Cursor;
 
 /// High-level index of `Chunk` records.
 #[derive(Debug, Clone)]
-pub struct ChunkInfo<'a> {
+pub struct ChunkInfo {
     /// Chunk info record version (only version 1 is currently cupported)
     pub ver: u32,
     /// Offset of the chunk record relative to the bag file beginning
@@ -15,14 +19,14 @@ pub struct ChunkInfo<'a> {
     /// Timestamp of latest message in the chunk in nanoseconds of UNIX epoch
     pub end_time: u64,
     /// Index entries data
-    data: &'a [u8],
+    data: Bytes,
 }
 
-impl<'a> ChunkInfo<'a> {
+impl ChunkInfo {
     /// Get entries iterator.
-    pub fn entries(&'a self) -> ChunkInfoEntriesIterator {
+    pub fn entries(&self) -> ChunkInfoEntriesIterator {
         ChunkInfoEntriesIterator {
-            cursor: Cursor::new(self.data),
+            cursor: Cursor::new(self.data.clone()),
         }
     }
 }
@@ -36,22 +40,22 @@ pub(crate) struct ChunkInfoHeader {
     pub count: Option<u32>,
 }
 
-impl<'a> RecordGen<'a> for ChunkInfo<'a> {
+impl RecordGen for ChunkInfo {
     type Header = ChunkInfoHeader;
 
     fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
-        let ver = header.ver.ok_or(Error::InvalidHeader)?;
-        let chunk_pos = header.chunk_pos.ok_or(Error::InvalidHeader)?;
-        let start_time = header.start_time.ok_or(Error::InvalidHeader)?;
-        let end_time = header.end_time.ok_or(Error::InvalidHeader)?;
-        let count = header.count.ok_or(Error::InvalidHeader)?;
+        let ver = header.ver.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let chunk_pos = header.chunk_pos.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let start_time = header.start_time.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let end_time = header.end_time.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let count = header.count.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
 
         if ver != 1 {
-            return Err(Error::UnsupportedVersion);
+            return Err(RosError::UnsupportedVersion.into());
         }
         let n = c.next_u32()?;
         if n % 8 != 0 || n / 8 != count {
-            return Err(Error::InvalidRecord);
+            return Err(RosError::InvalidRecord.into());
         }
         let data = c.next_bytes(n as u64)?;
         Ok(Self {
@@ -64,7 +68,7 @@ impl<'a> RecordGen<'a> for ChunkInfo<'a> {
     }
 }
 
-impl<'a> HeaderGen<'a> for ChunkInfoHeader {
+impl HeaderGen for ChunkInfoHeader {
     const OP: u8 = 0x06;
 
     fn process_field(&mut self, name: &str, val: &[u8]) -> Result<()> {

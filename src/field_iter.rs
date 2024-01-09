@@ -1,31 +1,32 @@
+use bytes::Bytes;
+
 use super::Result;
 use crate::record_types::utils::read_record;
 use std::iter::Iterator;
-use std::str;
 
 /// Iterator which goes over record header fields
-pub(crate) struct FieldIterator<'a> {
-    buf: &'a [u8],
+pub(crate) struct FieldIterator {
+    buf: Bytes,
 }
 
-impl<'a> FieldIterator<'a> {
-    pub(crate) fn new(buf: &'a [u8]) -> Self {
+impl FieldIterator {
+    pub(crate) fn new(buf: Bytes) -> Self {
         Self { buf }
     }
 }
 
-impl<'a> Iterator for FieldIterator<'a> {
-    type Item = Result<(&'a str, &'a [u8])>;
+impl Iterator for FieldIterator {
+    type Item = Result<(String, Bytes)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buf.is_empty() {
             return None;
         }
-        let (name, val, leftover) = match read_record(self.buf) {
+        let (name, val, leftover) = match read_record(self.buf.clone()) {
             Ok(v) => v,
             Err(err) => return Some(Err(err)),
         };
         self.buf = leftover;
-        Some(Ok((name, val)))
+        Some(Ok((name.to_string(), val)))
     }
 }

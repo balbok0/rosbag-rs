@@ -1,5 +1,3 @@
-use crate::cursor::OutOfBounds;
-use std::convert::From;
 use std::fmt;
 
 /// The error type for ROS bag file reading and parsing.
@@ -25,11 +23,6 @@ pub enum RosError {
     Lz4DecompressionError(String),
 }
 
-impl From<OutOfBounds> for RosError {
-    fn from(_: OutOfBounds) -> RosError {
-        RosError::OutOfBounds
-    }
-}
 
 impl fmt::Display for RosError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

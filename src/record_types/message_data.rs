@@ -1,16 +1,20 @@
+use bytes::Bytes;
+
 use super::utils::{set_field_time, set_field_u32, unknown_field};
-use super::{Error, HeaderGen, RecordGen, Result};
+use super::{HeaderGen, RecordGen};
+use anyhow::Result;
 use crate::cursor::Cursor;
+use crate::error::RosError;
 
 /// Message data for a `Connection` with `conn_id` ID.
 #[derive(Debug, Clone)]
-pub struct MessageData<'a> {
+pub struct MessageData {
     /// ID for connection on which message arrived
     pub conn_id: u32,
     /// Time at which the message was received in nanoseconds of UNIX epoch
     pub time: u64,
     /// Serialized message data in the ROS serialization format
-    pub data: &'a [u8],
+    pub data: Bytes,
 }
 
 #[derive(Default, Debug)]
@@ -19,12 +23,12 @@ pub(crate) struct MessageDataHeader {
     pub time: Option<u64>,
 }
 
-impl<'a> RecordGen<'a> for MessageData<'a> {
+impl RecordGen for MessageData {
     type Header = MessageDataHeader;
 
     fn read_data(c: &mut Cursor, header: Self::Header) -> Result<Self> {
-        let conn_id = header.conn_id.ok_or(Error::InvalidHeader)?;
-        let time = header.time.ok_or(Error::InvalidHeader)?;
+        let conn_id = header.conn_id.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
+        let time = header.time.ok_or(anyhow::Error::new(RosError::InvalidHeader))?;
         let data = c.next_chunk()?;
         Ok(MessageData {
             conn_id,
@@ -34,7 +38,7 @@ impl<'a> RecordGen<'a> for MessageData<'a> {
     }
 }
 
-impl<'a> HeaderGen<'a> for MessageDataHeader {
+impl HeaderGen for MessageDataHeader {
     const OP: u8 = 0x02;
 
     fn process_field(&mut self, name: &str, val: &[u8]) -> Result<()> {

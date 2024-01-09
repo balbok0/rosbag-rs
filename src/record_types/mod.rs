@@ -1,5 +1,7 @@
 //! Collection of record types.
-use super::{Error, Result};
+use bytes::Bytes;
+
+use anyhow::Result;
 
 use crate::cursor::Cursor;
 
@@ -17,18 +19,18 @@ pub use self::chunk_info::{ChunkInfo, ChunkInfoEntriesIterator, ChunkInfoEntry};
 pub(crate) mod utils;
 use self::utils::{check_op, read_record};
 
-pub(crate) trait HeaderGen<'a>: Sized + Default {
+pub(crate) trait HeaderGen: Sized + Default {
     const OP: u8;
 
-    fn read_header(mut header: &'a [u8]) -> Result<Self> {
+    fn read_header(mut header: Bytes) -> Result<Self> {
         let mut rec = Self::default();
         while !header.is_empty() {
             let (name, val, new_header) = read_record(header)?;
             header = new_header;
             if name == "op" {
-                check_op(val, Self::OP)?;
+                check_op(&val, Self::OP)?;
             } else {
-                rec.process_field(name, val)?;
+                rec.process_field(&name, &val)?;
             }
         }
         Ok(rec)
@@ -37,13 +39,13 @@ pub(crate) trait HeaderGen<'a>: Sized + Default {
     fn process_field(&mut self, name: &str, val: &[u8]) -> Result<()>;
 }
 
-pub(crate) trait RecordGen<'a>: Sized {
+pub(crate) trait RecordGen: Sized {
     /// `op` header field value
     const OP: u8 = Self::Header::OP;
     /// Type which holds header information
-    type Header: HeaderGen<'a>;
+    type Header: HeaderGen;
 
-    fn read(header: &'a [u8], c: &mut Cursor) -> Result<Self> {
+    fn read(header: Bytes, c: &mut Cursor) -> Result<Self> {
         let header = Self::Header::read_header(header)?;
         Self::read_data(c, header)
     }

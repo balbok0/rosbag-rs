@@ -4,11 +4,12 @@
 //! ```
 //! use rosbag::{ChunkRecord, MessageRecord, IndexRecord, RosBag};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let path = "dummy.bag";
-//! let bag = RosBag::new(path)?;
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let path = "file://dummy.bag".to_string();
+//! let bag = RosBag::new(path).await?;
 //! // Iterate over records in the chunk section
-//! for record in bag.chunk_records() {
+//! for record in bag.chunk_records().await {
 //!     match record? {
 //!         ChunkRecord::Chunk(chunk) => {
 //!             // iterate over messages in the chunk
@@ -32,7 +33,7 @@
 //!     }
 //! }
 //! // Iterate over records in the index section
-//! for record in bag.index_records() {
+//! for record in bag.index_records().await {
 //!     match record? {
 //!         IndexRecord::IndexData(index_data) => {
 //!             // ..
@@ -52,10 +53,10 @@
 //! ```
 #![warn(missing_docs, rust_2018_idioms)]
 
-use std::{io, str};
+use std::{io, str, sync::Arc};
 use anyhow::Result;
 
-use object_store::{ObjectStore, path::Path, parse_url};
+use object_store::{ObjectStore, parse_url};
 use url::Url;
 
 const VERSION_STRING: &str = "#ROSBAG V2.0\n";
@@ -72,7 +73,7 @@ mod index_iter;
 mod msg_iter;
 pub mod record_types;
 
-use cursor::Cursor;
+use cursor::{Cursor, ObjectCursor};
 use field_iter::FieldIterator;
 use record_types::utils::{check_op, set_field_u32, set_field_u64};
 
@@ -83,7 +84,7 @@ pub use msg_iter::{MessageRecord, MessageRecordsIterator};
 
 /// Open rosbag file.
 pub struct RosBag {
-    cursor: Cursor,
+    cursor: ObjectCursor,
     start_pos: usize,
     index_pos: usize,
     conn_count: u32,
@@ -101,14 +102,15 @@ struct BagHeader {
     chunk_count: u32,
 }
 
-async fn parse_bag_header(cursor: Cursor) -> Result<(u64, BagHeader)> {
-    let bytes = cursor.get_range(&path, 0..VERSION_LEN).await?;
+async fn parse_bag_header(cursor: ObjectCursor) -> Result<(usize, BagHeader)> {
+    let bytes = cursor.read_bytes(0, VERSION_LEN).await?;
 
     if bytes != VERSION_STRING.as_bytes() {
-        return Err(BagError::InvalidHeader);
+        return Err(BagError::InvalidHeader.into());
     }
 
-    let header = cursor.read_chunk(VERSION_LEN)?;
+    let header = cursor.read_chunk(VERSION_LEN).await?;
+    let header_len = header.len();
 
     let mut index_pos: Option<u64> = None;
     let mut conn_count: Option<u32> = None;
@@ -117,14 +119,14 @@ async fn parse_bag_header(cursor: Cursor) -> Result<(u64, BagHeader)> {
 
     for item in FieldIterator::new(header) {
         let (name, val) = item?;
-        match name {
+        match name.as_str() {
             "op" => {
-                check_op(val, ROSBAG_HEADER_OP)?;
+                check_op(&val, ROSBAG_HEADER_OP)?;
                 op = true;
             }
-            "index_pos" => set_field_u64(&mut index_pos, val)?,
-            "conn_count" => set_field_u32(&mut conn_count, val)?,
-            "chunk_count" => set_field_u32(&mut chunk_count, val)?,
+            "index_pos" => set_field_u64(&mut index_pos, &val)?,
+            "conn_count" => set_field_u32(&mut conn_count, &val)?,
+            "chunk_count" => set_field_u32(&mut chunk_count, &val)?,
             _ => log::warn!("unexpected field in bag header: {}", name),
         }
     }
@@ -135,22 +137,20 @@ async fn parse_bag_header(cursor: Cursor) -> Result<(u64, BagHeader)> {
             conn_count,
             chunk_count,
         },
-        _ => return Err(Error::InvalidHeader),
+        _ => return Err(BagError::InvalidHeader.into()),
     };
 
-    // jump over header data
-    let _ = cursor.next_chunk()?;
-
-    Ok((cursor.pos(), bag_header))
+    Ok((VERSION_LEN + header_len, bag_header))
 }
 
 impl RosBag {
     /// Create a new iterator over provided path to ROS bag file.
-    pub fn new<P: Into<Url>>(path: P) -> io::Result<Self> {
+    pub async fn new<P: Into<Url>>(path: P) -> io::Result<Self> {
         let (store, path) = parse_url(&path.into())?;
-        let cursor = Cursor::new(store, store.head(&path)?);
+        let store = Arc::new(store);
+        let cursor = ObjectCursor::new( store.clone(), store.head(&path).await?);
 
-        let (start_pos, header) = parse_bag_header(cursor).map_err(|_| {
+        let (start_pos, header) = parse_bag_header(cursor.clone()).await.map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid or unsupported rosbag header",
@@ -177,8 +177,13 @@ impl RosBag {
     }
 
     /// Get iterator over records in the chunk section.
-    pub fn chunk_records(&self) -> ChunkRecordsIterator<'_> {
-        let cursor = Cursor::new(&self.data[self.start_pos..self.index_pos]);
+    pub async fn chunk_records(&self) -> ChunkRecordsIterator {
+        // let cursor = Cursor::new(&self.data[self.start_pos..self.index_pos]);
+        // FIXME: This will be too large.
+        // Simple fix is to add logic around this iterator (i.e. a super iterator of sorts, which would load only chunks for the next X bytes)
+        // Then keep the current logic
+
+        let cursor = Cursor::new(self.cursor.read_bytes(self.start_pos, self.index_pos - self.start_pos).await.unwrap());
         ChunkRecordsIterator {
             cursor,
             offset: self.start_pos as u64,
@@ -186,8 +191,8 @@ impl RosBag {
     }
 
     /// Get iterator over records in the index section.
-    pub fn index_records(&self) -> IndexRecordsIterator<'_> {
-        let cursor = Cursor::new(&self.data[self.index_pos..]);
+    pub async fn index_records(&self) -> IndexRecordsIterator {
+        let cursor = Cursor::new(self.cursor.read_bytes(self.index_pos, self.cursor.len() - self.index_pos).await.unwrap());
         IndexRecordsIterator {
             cursor,
             offset: self.index_pos as u64,
