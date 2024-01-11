@@ -1,4 +1,4 @@
-use anyhow::{Result};
+use anyhow::Result;
 use crate::error::RosError;
 use byteorder::{ByteOrder, LE};
 use bytes::Bytes;
@@ -8,6 +8,7 @@ pub(crate) fn read_record(mut header: Bytes) -> Result<(String, Bytes, Bytes)> {
     if header.len() < 4 {
         return Err(RosError::InvalidHeader.into());
     }
+    println!("Header len {}", header.len());
     let n = LE::read_u32(&header[..4]) as usize;
     header = header.slice(4..);
 

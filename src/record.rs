@@ -18,7 +18,11 @@ pub(crate) enum Record {
 
 impl Record {
     pub(crate) fn next_record(c: &mut Cursor) -> Result<Self> {
+        let header_pos = c.pos();
+        let header_len_entry = c.next_u32()?;
+        c.seek(header_pos)?;
         let header = c.next_chunk()?;
+        println!("Post reading the header. Header pos {header_pos} Header len {header_len_entry} Size buf: {}", header.len());
 
         let mut op = None;
         for item in FieldIterator::new(header.clone()) {
@@ -32,6 +36,7 @@ impl Record {
                 }
             }
         }
+        println!("Post items");
 
         Ok(match op {
             Some(IndexData::OP) => Record::IndexData(IndexData::read(header, c)?),

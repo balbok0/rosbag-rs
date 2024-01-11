@@ -39,6 +39,7 @@ impl Iterator for ChunkRecordsIterator {
         if self.cursor.left() == 0 {
             return None;
         }
+        println!("Chunk iter");
         let res = match Record::next_record(&mut self.cursor) {
             Ok(Record::Chunk(v)) => Ok(ChunkRecord::Chunk(v)),
             Ok(Record::IndexData(v)) => Ok(ChunkRecord::IndexData(v)),

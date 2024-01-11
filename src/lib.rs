@@ -1,56 +1,6 @@
 //! Utilities for efficient reading of ROS bag files.
 //!
 //! # Example
-//! ```
-//! use rosbag::{ChunkRecord, MessageRecord, IndexRecord, RosBag};
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let path = "file://dummy.bag".to_string();
-//! let bag = RosBag::new(path).await?;
-//! // Iterate over records in the chunk section
-//! for record in bag.chunk_records().await {
-//!     match record? {
-//!         ChunkRecord::Chunk(chunk) => {
-//!             // iterate over messages in the chunk
-//!             for msg in chunk.messages() {
-//!                 match msg? {
-//!                     MessageRecord::MessageData(msg_data) => {
-//!                         // ..
-//!                         # drop(msg_data);
-//!                     }
-//!                     MessageRecord::Connection(conn) => {
-//!                         // ..
-//!                         # drop(conn);
-//!                     }
-//!                 }
-//!             }
-//!         },
-//!         ChunkRecord::IndexData(index_data) => {
-//!             // ..
-//!             # drop(index_data);
-//!         },
-//!     }
-//! }
-//! // Iterate over records in the index section
-//! for record in bag.index_records().await {
-//!     match record? {
-//!         IndexRecord::IndexData(index_data) => {
-//!             // ..
-//!             # drop(index_data);
-//!         }
-//!         IndexRecord::Connection(conn) => {
-//!             // ..
-//!             # drop(conn);
-//!         }
-//!         IndexRecord::ChunkInfo(chunk_info) => {
-//!             // ..
-//!             # drop(chunk_info);
-//!         }
-//!     }
-//! }
-//! # Ok(()) }
-//! ```
 #![warn(missing_docs, rust_2018_idioms)]
 
 use std::{io, str, sync::Arc};
@@ -61,6 +11,7 @@ use url::Url;
 
 const VERSION_STRING: &str = "#ROSBAG V2.0\n";
 const VERSION_LEN: usize = VERSION_STRING.len() as usize;
+const ROSBAG_HEADER_SIZE: usize = 4096;
 const ROSBAG_HEADER_OP: u8 = 0x03;
 
 mod cursor;
@@ -140,7 +91,12 @@ async fn parse_bag_header(cursor: ObjectCursor) -> Result<(usize, BagHeader)> {
         _ => return Err(BagError::InvalidHeader.into()),
     };
 
-    Ok((VERSION_LEN + header_len, bag_header))
+    let data_len = cursor.read_u32(VERSION_LEN + header_len + 4).await? as usize;
+    println!("Version len: {VERSION_LEN}");
+    println!("Header len: {header_len}");
+    println!("Data len: {data_len}");
+
+    Ok((VERSION_LEN + ROSBAG_HEADER_SIZE, bag_header))
 }
 
 impl RosBag {
@@ -197,5 +153,63 @@ impl RosBag {
             cursor,
             offset: self.index_pos as u64,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // use crate::rosbag::{ChunkRecord, MessageRecord, IndexRecord, RosBag};
+    use super::*;
+    use url::Url;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn general_use() -> Result<()> {
+        let path = "/data/disk0/20210828_heightmaps_1/20210828_9.bag";
+        let path_url = Url::from_file_path(&path).map_err(|_| anyhow::anyhow! { "Could not parse path to url" })?;
+        let bag = RosBag::new(path_url).await?;
+        // Iterate over records in the chunk section
+        for record in bag.chunk_records().await {
+            match record? {
+                ChunkRecord::Chunk(chunk) => {
+                    // iterate over messages in the chunk
+                    for msg in chunk.messages() {
+                        match msg? {
+                            MessageRecord::MessageData(msg_data) => {
+                                println!("Message Data");
+                                ()
+                            }
+                            MessageRecord::Connection(conn) => {
+                                println!("Connection");
+                                ()
+                            }
+                        }
+                    }
+                },
+                ChunkRecord::IndexData(index_data) => {
+                    println!("IndexData");
+                    ()
+                },
+            }
+        }
+        // Iterate over records in the index section
+        for record in bag.index_records().await {
+            match record? {
+                IndexRecord::IndexData(index_data) => {
+                    println!("IIR::IndexData");
+                    ()
+                }
+                IndexRecord::Connection(conn) => {
+                    println!("IIR::Connection");
+                    ()
+                }
+                IndexRecord::ChunkInfo(chunk_info) => {
+                    println!("ChunkInfo");
+                    ()
+                }
+            }
+        }
+
+        Ok(())
     }
 }
